@@ -6,20 +6,20 @@ import tensorflow as tf
 from tensorflow.python.saved_model import tag_constants
 import pandas as pd
 
+# Delete any previously loaded model if there are any
 tf.compat.v1.reset_default_graph()
 
-
 #Import Files
-x_tr_data = pd.read_excel('/home/kerem/Desktop/Airfoil/scenario3/training_x.xlsx', header = None)
+x_tr_data = pd.read_excel('file_location\file.xlsx', header = None)     # Training set's input
 X_Train = np.array(x_tr_data)
                                                                                                                                         
-x_veri_data = pd.read_excel('/home/kerem/Desktop/Airfoil/scenario3/validation_x.xlsx', header = None)
+x_veri_data = pd.read_excel('file_location\file.xlsx', header = None)   # Verification set's input
 X_Veri = np.array(x_veri_data)
 
-y_tr_data = pd.read_excel('/home/kerem/Desktop/Airfoil/scenario3/training_y.xlsx', header = None)
+y_tr_data = pd.read_excel('file_location\file.xlsx', header = None)    # Training set's output
 y_Train = np.array(y_tr_data)
 
-y_veri_data = pd.read_excel('/home/kerem/Desktop/Airfoil/scenario3/validation_y.xlsx', header = None)
+y_veri_data = pd.read_excel('file_location\file.xlsx', header = None)  # Verification set's output
 y_Veri = np.array(y_veri_data)
 
 
@@ -92,12 +92,13 @@ y_p = model.forward(X)
 
 predict_named = tf.compat.v1.identity(y_p, "prediction")
 
+# Defining loss functions
 loss_drag = tf.reduce_mean(tf.pow(y_p[:,0] - y[:,0], 2))
 loss_lift = tf.reduce_mean(tf.pow(y_p[:,1] - y[:,1], 2))
 loss_moment = tf.reduce_mean(tf.pow(y_p[:,2] - y[:,2], 2))
 loss = (loss_drag + loss_lift + loss_moment) / 3
 
-optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)   
+optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)   # Define optimizer
 train_op = optimizer.minimize(loss)
 
 #Start  saving the model
@@ -109,7 +110,7 @@ with tf.compat.v1.Session() as sess:
     
     # Training loop
     num_epochs = 1000  # Define the number of epochs
-    batch_size = 700
+    batch_size = 700   # Define the batch size on each iteration
     
     for epoch in range(num_epochs):
          
@@ -135,7 +136,7 @@ with tf.compat.v1.Session() as sess:
     print(f'Validation Loss: {validation_loss}, Drag Loss: {validation_loss_drag}, Lift Loss: {validation_loss_lift}, Moment Loss: {validation_loss_moment}')
 
     # Save the model
-    saver.save(sess, '/home/kerem/Desktop/Airfoil/Model Saves/scenario3/model.ckpt')
+    saver.save(sess, 'file_location/model.ckpt')
     print("Model saved")
 
 
