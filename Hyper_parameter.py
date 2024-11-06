@@ -32,7 +32,7 @@ dim = X_Veri.shape[1]
 tstart = time.time()
 
 # Define the SN class
-class SobolevNetwork:
+class Network:
     def __init__(self, input_dim, hidden_dims, activation_funcs):
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
@@ -62,8 +62,8 @@ def objective(trial):
     batch_size = 700
     
     # Hyperparameters to tune
-    num_hidden_layers = trial.suggest_int('num_hidden_layers', 1, 5)        # Number of hidden layer
-    hidden_units = trial.suggest_int('n_units', 1, 64)                      # Number of neuron in each layer
+    num_hidden_layers = trial.suggest_int('num_hidden_layers', low=1, high=5, step=1)        # Number of hidden layer
+    hidden_units = trial.suggest_int('n_units', low=1, high=64, step=1)                      # Number of neuron in each layer
     hidden_dims = [hidden_units] * num_hidden_layers
     learning_rate = trial.suggest_loguniform('learning_rate', 1e-5, 1e-1)   # Learning rate
 
@@ -77,7 +77,7 @@ def objective(trial):
     hidden_activations = [trial.suggest_categorical(f'activation_l{i}', list(activation_functions.values())) for i in range(num_hidden_layers)]
 
     # Define the network
-    model = SobolevNetwork(dim, hidden_dims, hidden_activations)
+    model = Network(dim, hidden_dims, hidden_activations)
     
     X = tf.compat.v1.placeholder(tf.float32, shape=[None, dim], name='X')
     y = tf.compat.v1.placeholder(tf.float32, shape=[None, 3], name='y')
@@ -85,9 +85,9 @@ def objective(trial):
     y_p = model.forward(X)
 
     # Loss function definitions
-    loss_drag = tf.reduce_mean(tf.pow(y_p[:,0] - tf.reshape(y, [batch_size, 3])[:,0], 2))
-    loss_lift = tf.reduce_mean(tf.pow(y_p[:,1] - tf.reshape(y, [batch_size, 3])[:,1], 2))
-    loss_moment = tf.reduce_mean(tf.pow(y_p[:,2] - tf.reshape(y, [batch_size, 3])[:,2], 2))
+    loss_drag = tf.reduce_mean(tf.abs((y_p[:,0] - tf.reshape(y, [batch_size, 3])[:,0])/tf.reshape(y,[batch_size,3])[:,0]))
+    loss_lift = tf.reduce_mean(tf.abs((y_p[:,1] - tf.reshape(y, [batch_size, 3])[:,2])/tf.reshape(y,[batch_size,3])[:,1]))
+    loss_moment = tf.reduce_mean(tf.abs((y_p[:,2] - tf.reshape(y, [batch_size, 3])[:,2])/tf.reshape(y,[batch_size,3])[:,2]))
     loss = (loss_drag + loss_lift + loss_moment) / 3
     
     optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)   # Selection of optimizer
@@ -105,26 +105,26 @@ def objective(trial):
     
     # Validation
     y_valid_pred = sess.run(y_p, feed_dict={X: X_Veri})
-    validation_loss_drag = np.mean(np.power(y_valid_pred[:,0] - y_Veri[:,0],2))
-    validation_loss_lift = np.mean(np.power(y_valid_pred[:,1] - y_Veri[:,1],2))
-    validation_loss_moment = np.mean(np.power(y_valid_pred[:,2] - y_Veri[:,2],2))
+    validation_loss_drag = np.mean((np.abs(y_valid_pred[:,0] - y_Veri[:,0])/y_Veri[:,0]))
+    validation_loss_lift = np.mean((np.abs(y_valid_pred[:,1] - y_Veri[:,0])/y_Veri[:,1]))
+    validation_loss_moment = np.mean((np.abs(y_valid_pred[:,2] - y_Veri[:,0])/y_Veri[:,2]))
   
     validation_loss = (validation_loss_drag + validation_loss_lift + validation_loss_moment) /3
      
     
     # This method update variables if the all three variable is smaller or equal to its previous value
-    #if validation_loss_drag <= objective.best_val_loss_drag and validation_loss_lift <= objective.best_val_loss_lift and validation_loss_moment <= objective.best_val_loss_moment:
-        #objective.best_val_loss_drag = validation_loss_drag
-        #objective.best_val_loss_lift = validation_loss_lift
-        #objective.best_val_loss_moment = validation_loss_moment
-        #objective.best_val_loss = validation_loss
-    
-    # This method updates varaibles if their summation is smaller or equal to its previous value
-    if validation_loss <= objective.best_val_loss:
+    if validation_loss_drag <= objective.best_val_loss_drag and validation_loss_lift <= objective.best_val_loss_lift and validation_loss_moment <= objective.best_val_loss_moment:
         objective.best_val_loss_drag = validation_loss_drag
         objective.best_val_loss_lift = validation_loss_lift
         objective.best_val_loss_moment = validation_loss_moment
         objective.best_val_loss = validation_loss
+    
+    # This method updates varaibles if their summation is smaller or equal to its previous value, this method is not used since it wont counts sudden spikes.
+    #if validation_loss <= objective.best_val_loss:
+        #objective.best_val_loss_drag = validation_loss_drag
+        #objective.best_val_loss_lift = validation_loss_lift
+        #objective.best_val_loss_moment = validation_loss_moment
+        #objective.best_val_loss = validation_loss
     
   
     
