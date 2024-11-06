@@ -31,7 +31,7 @@ dim = X_Veri.shape[1]
 
 tstart = time.time()
 
-# Define the SN class
+# Define the network class
 class Network:
     def __init__(self, input_dim, hidden_dims, activation_funcs):
         self.input_dim = input_dim
