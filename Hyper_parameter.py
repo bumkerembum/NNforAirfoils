@@ -86,7 +86,7 @@ def objective(trial):
 
     # Loss function definitions
     loss_drag = tf.reduce_mean(tf.abs((y_p[:,0] - tf.reshape(y, [batch_size, 3])[:,0])/tf.reshape(y,[batch_size,3])[:,0]))
-    loss_lift = tf.reduce_mean(tf.abs((y_p[:,1] - tf.reshape(y, [batch_size, 3])[:,2])/tf.reshape(y,[batch_size,3])[:,1]))
+    loss_lift = tf.reduce_mean(tf.abs((y_p[:,1] - tf.reshape(y, [batch_size, 3])[:,1])/tf.reshape(y,[batch_size,3])[:,1]))
     loss_moment = tf.reduce_mean(tf.abs((y_p[:,2] - tf.reshape(y, [batch_size, 3])[:,2])/tf.reshape(y,[batch_size,3])[:,2]))
     loss = (loss_drag + loss_lift + loss_moment) / 3
     
