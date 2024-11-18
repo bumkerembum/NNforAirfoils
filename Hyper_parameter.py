@@ -6,23 +6,34 @@ import tensorflow as tf
 from tensorflow.python.saved_model import tag_constants
 import pandas as pd
 import optuna
+from sklearn.preprocessing import StandardScaler
 
 tf.compat.v1.disable_eager_execution()
 tf.compat.v1.reset_default_graph()
 
 
 # Import Files
-x_tr_data = pd.read_excel('file_location//file.xlsx', header = None)     # Training set inputs
+x_tr_data = pd.read_excel('//home//kerem//Desktop//Airfoil//scenario4//training_x.xlsx', header = None)
 X_Train = np.array(x_tr_data)
                                                                                                                                         
-x_veri_data = pd.read_excel('file_location//file.xlsx', header = None)   # Training set outputs
+x_veri_data = pd.read_excel('//home//kerem//Desktop//Airfoil//scenario4//validation_x.xlsx', header = None)
 X_Veri = np.array(x_veri_data)
 
-y_tr_data = pd.read_excel('file_location//file.xlsx', header = None)     # Validation set inputs
+y_tr_data = pd.read_excel('//home//kerem//Desktop//Airfoil//scenario4//training_y.xlsx', header = None)
 y_Train = np.array(y_tr_data)
 
-y_veri_data = pd.read_excel('file_location//file.xlsx', header = None)   # Validation set outputs
+y_veri_data = pd.read_excel('//home//kerem//Desktop//Airfoil//scenario4//validation_y.xlsx', header = None)
 y_Veri = np.array(y_veri_data)
+
+scaler_y_Train_drag = StandardScaler()
+y_Train_drag_scaled = scaler_y_Train_drag.fit_transform(y_Train[:, 0].reshape(-1, 1)).ravel()
+scaler_y_Train_lift = StandardScaler()
+y_Train_lift_scaled = scaler_y_Train_lift.fit_transform(y_Train[:, 1].reshape(-1, 1)).ravel()
+scaler_y_Train_moment = StandardScaler()
+y_Train_moment_scaled = scaler_y_Train_moment.fit_transform(y_Train[:, 2].reshape(-1, 1)).ravel()
+
+y_Train_scaled = np.column_stack((y_Train_drag_scaled, y_Train_lift_scaled, y_Train_moment_scaled))
+
 
 # Read dimensions of the data
 nTrain = X_Train.shape[0]
@@ -31,8 +42,8 @@ dim = X_Veri.shape[1]
 
 tstart = time.time()
 
-# Define the network class
-class Network:
+# Define the SN class
+class SobolevNetwork:
     def __init__(self, input_dim, hidden_dims, activation_funcs):
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
@@ -44,7 +55,7 @@ class Network:
             b = tf.Variable(tf.ones([dim]))
             self.weights.append((W, b))
             prev_dim = dim
-        self.W_out = tf.Variable(tf.random.normal([prev_dim, 3], stddev=0.1))   # Enter the output dimenbsion, here its 3
+        self.W_out = tf.Variable(tf.random.normal([prev_dim, 3], stddev=0.1))
         self.b_out = tf.Variable(tf.ones([3]))
 
     def forward(self, X):
@@ -62,12 +73,10 @@ def objective(trial):
     batch_size = 700
     
     # Hyperparameters to tune
-    num_hidden_layers = trial.suggest_int('num_hidden_layers', low=1, high=5, step=1)        # Number of hidden layer
-    hidden_units = trial.suggest_int('n_units', low=1, high=64, step=1)                      # Number of neuron in each layer
+    num_hidden_layers = trial.suggest_int('num_hidden_layers', low=1, high=5, step=1)
+    hidden_units = trial.suggest_int('n_units', low=1, high=64, step=1)  # single value for all layers
     hidden_dims = [hidden_units] * num_hidden_layers
-    learning_rate = trial.suggest_loguniform('learning_rate', 1e-5, 1e-1)   # Learning rate
-
-    # List of possible activation functions
+    learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 1e-1)
     activation_functions = {
         'relu': tf.nn.relu,
         'sigmoid': tf.nn.sigmoid,
@@ -77,20 +86,18 @@ def objective(trial):
     hidden_activations = [trial.suggest_categorical(f'activation_l{i}', list(activation_functions.values())) for i in range(num_hidden_layers)]
 
     # Define the network
-    model = Network(dim, hidden_dims, hidden_activations)
+    model = SobolevNetwork(dim, hidden_dims, hidden_activations)
     
     X = tf.compat.v1.placeholder(tf.float32, shape=[None, dim], name='X')
     y = tf.compat.v1.placeholder(tf.float32, shape=[None, 3], name='y')
     
     y_p = model.forward(X)
-
-    # Loss function definitions
     loss_drag = tf.reduce_mean(tf.abs((y_p[:,0] - tf.reshape(y, [batch_size, 3])[:,0])/tf.reshape(y,[batch_size,3])[:,0]))
     loss_lift = tf.reduce_mean(tf.abs((y_p[:,1] - tf.reshape(y, [batch_size, 3])[:,1])/tf.reshape(y,[batch_size,3])[:,1]))
     loss_moment = tf.reduce_mean(tf.abs((y_p[:,2] - tf.reshape(y, [batch_size, 3])[:,2])/tf.reshape(y,[batch_size,3])[:,2]))
     loss = (loss_drag + loss_lift + loss_moment) / 3
     
-    optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)   # Selection of optimizer
+    optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
     train_op = optimizer.minimize(loss)
     
     # Training
@@ -100,31 +107,43 @@ def objective(trial):
     for epoch in range(num_epochs):
         batch_indices = np.random.choice(nTrain, batch_size)
         X_batch = X_Train[batch_indices]
-        y_batch = y_Train[batch_indices]
+        y_batch = y_Train_scaled[batch_indices]
         sess.run(train_op, feed_dict={X: X_batch, y: y_batch})
     
     # Validation
-    y_valid_pred = sess.run(y_p, feed_dict={X: X_Veri})
-    validation_loss_drag = np.mean((np.abs(y_valid_pred[:,0] - y_Veri[:,0])/y_Veri[:,0]))
-    validation_loss_lift = np.mean((np.abs(y_valid_pred[:,1] - y_Veri[:,0])/y_Veri[:,1]))
-    validation_loss_moment = np.mean((np.abs(y_valid_pred[:,2] - y_Veri[:,0])/y_Veri[:,2]))
+    y_valid_pred_scaled = sess.run(y_p, feed_dict={X: X_Veri})
+    
+    y_valid_pred_drag = scaler_y_Train_drag.inverse_transform(y_valid_pred_scaled[:,0].reshape(-1, 1)).ravel()
+    y_valid_pred_lift = scaler_y_Train_lift.inverse_transform(y_valid_pred_scaled[:,1].reshape(-1, 1)).ravel()
+    y_valid_pred_moment = scaler_y_Train_moment.inverse_transform(y_valid_pred_scaled[:,2].reshape(-1, 1)).ravel()
+    
+    y_valid_pred = np.column_stack((y_valid_pred_drag, y_valid_pred_lift, y_valid_pred_moment))
+    
+    validation_loss_drag = np.mean(np.abs((y_valid_pred[:,0] - y_Veri[:,0])/y_Veri[:,0]))
+    validation_loss_lift = np.mean(np.abs((y_valid_pred[:,1] - y_Veri[:,1])/y_Veri[:,1]))
+    validation_loss_moment = np.mean(np.abs((y_valid_pred[:,2] - y_Veri[:,2])/y_Veri[:,2]))
   
     validation_loss = (validation_loss_drag + validation_loss_lift + validation_loss_moment) /3
      
     
-    # This method update variables if the all three variable is smaller or equal to its previous value
-    if validation_loss_drag <= objective.best_val_loss_drag and validation_loss_lift <= objective.best_val_loss_lift and validation_loss_moment <= objective.best_val_loss_moment:
-        objective.best_val_loss_drag = validation_loss_drag
-        objective.best_val_loss_lift = validation_loss_lift
-        objective.best_val_loss_moment = validation_loss_moment
-        objective.best_val_loss = validation_loss
+    # Updata best loss
     
-    # This method updates varaibles if their summation is smaller or equal to its previous value, this method is not used since it wont counts sudden spikes.
-    #if validation_loss <= objective.best_val_loss:
+    #if validation_loss_drag <= objective.best_val_loss_drag and validation_loss_lift <= objective.best_val_loss_lift and validation_loss_moment <= objective.best_val_loss_moment:
         #objective.best_val_loss_drag = validation_loss_drag
         #objective.best_val_loss_lift = validation_loss_lift
         #objective.best_val_loss_moment = validation_loss_moment
         #objective.best_val_loss = validation_loss
+    
+    # Burada hata çıkabilir optizzzasyonun best validation seçme methodu değişik örneğin: 
+    # 10 10 10 = 30
+    #  8 10  7 = 25  benim method için ok
+    # 15  7  3 = 25 benim method için ok değil ama optimizasyon için ok 
+  
+    if validation_loss <= objective.best_val_loss:
+       objective.best_val_loss_drag = validation_loss_drag
+       objective.best_val_loss_lift = validation_loss_lift
+       objective.best_val_loss_moment = validation_loss_moment
+       objective.best_val_loss = validation_loss
     
   
     
@@ -156,7 +175,7 @@ objective.best_trial = 0   # initial value
 
 # Run the hyperparameter optimization
 study = optuna.create_study(direction='minimize')
-study.optimize(objective, n_trials=1000)
+study.optimize(objective, n_trials=750)
 
 # Output the best hyperparameters
 print("Best hyperparameters: ", study.best_params)
